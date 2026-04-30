@@ -6,7 +6,7 @@
 [![Node-RED ≥2](https://img.shields.io/badge/node--red-%3E%3D2.0-red.svg)](https://nodered.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[![Ko-fi](https://img.shields.io/badge/Buy%20me%20a%20coffee-%23FF5E5B?logo=ko-fi&logoColor=white&style=flat)](https://ko-fi.com/davidetravaglini)
+If you'd like to support me, [![Ko-fi](https://img.shields.io/badge/Buy%20me%20a%20coffee-%23FF5E5B?logo=ko-fi&logoColor=white&style=flat)](https://ko-fi.com/davidetravaglini)
 
 Node-RED nodes to create and manipulate Office documents: **Excel** (.xlsx), **Word** (.docx) and **PowerPoint** (.pptx) — without Microsoft Office.
 
