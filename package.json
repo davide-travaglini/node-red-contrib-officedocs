@@ -1,0 +1,53 @@
+{
+  "name": "node-red-contrib-officedocs",
+  "version": "0.3.0",
+  "description": "Node-RED nodes to create and manipulate Office documents: Excel (.xlsx), Word (.docx) and PowerPoint (.pptx)",
+  "keywords": [
+    "node-red",
+    "excel",
+    "xlsx",
+    "docx",
+    "pptx",
+    "word",
+    "powerpoint",
+    "office",
+    "exceljs",
+    "document",
+    "report",
+    "spreadsheet",
+    "presentation"
+  ],
+  "author": "Davide Travaglini",
+  "license": "MIT",
+  "node-red": {
+    "version": ">=2.0.0",
+    "nodes": {
+      "exceljs": "nodes/exceljs/exceljs.js",
+      "docx": "nodes/docx/docx.js",
+      "pptx": "nodes/pptx/pptx.js"
+    }
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "docx": "^8.5.0",
+    "pptxgenjs": "^3.12.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davide-travaglini/node-red-contrib-officedocs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/davide-travaglini/node-red-contrib-officedocs/issues"
+  },
+  "homepage": "https://github.com/davide-travaglini/node-red-contrib-officedocs#readme",
+  "files": [
+    "nodes/",
+    "examples/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}

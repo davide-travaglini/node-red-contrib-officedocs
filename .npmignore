@@ -1,0 +1,11 @@
+.git
+.gitignore
+Project.md
+*.md
+!README.md
+.vscode
+.eslintrc*
+test/
+tests/
+coverage/
+.nyc_output/

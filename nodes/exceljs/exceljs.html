@@ -1,0 +1,608 @@
+<!-- ExcelJS Node - Editor Panel -->
+<script type="text/javascript">
+(function () {
+
+    const OPERATIONS = [
+        { v: 'create',            l: 'create — new workbook' },
+        { v: 'read',              l: 'read — load from file / buffer' },
+        { v: 'addSheet',          l: 'addSheet — add worksheet' },
+        { v: 'setActiveSheet',    l: 'setActiveSheet — set default sheet for subsequent ops' },
+        { v: 'getInfo',           l: 'getInfo — workbook metadata (sheet names, row counts)' },
+        { v: 'addRow',            l: 'addRow — add single row' },
+        { v: 'addRows',           l: 'addRows — add multiple rows' },
+        { v: 'setCell',           l: 'setCell — set cell value / style' },
+        { v: 'styleRange',        l: 'styleRange — apply style to range' },
+        { v: 'mergeCell',         l: 'mergeCell — merge a cell range' },
+        { v: 'setColumnWidth',    l: 'setColumnWidth — set column width / hide' },
+        { v: 'setRowHeight',      l: 'setRowHeight — set row height / hide' },
+        { v: 'freezePanes',       l: 'freezePanes — freeze rows / columns' },
+        { v: 'readCell',          l: 'readCell — read a cell value' },
+        { v: 'readRange',         l: 'readRange — read a range as 2D array' },
+        { v: 'addTable',          l: 'addTable — insert structured table' },
+        { v: 'conditionalFormat', l: 'conditionalFormat — conditional formatting' },
+        { v: 'protect',           l: 'protect — protect sheet / workbook' },
+        { v: 'write',             l: 'write — serialize to file / buffer / base64' }
+    ];
+
+    const OP_SECTIONS = {
+        create:            ['sec-creator', 'sec-lastModifiedBy'],
+        read:              ['sec-source'],
+        addSheet:          ['sec-sheetName', 'sec-tabColor', 'sec-sheetState'],
+        setActiveSheet:    ['sec-sheetName', 'sec-setActiveSheet-tip'],
+        getInfo:           ['sec-getInfo-tip'],
+        addRow:            ['sec-sheet', 'sec-rowValues', 'sec-autoCreate'],
+        addRows:           ['sec-sheet', 'sec-rowsData', 'sec-autoCreate'],
+        setCell:           ['sec-sheet', 'sec-cell', 'sec-cellValue', 'sec-style-hdr', 'sec-style', 'sec-autoCreate'],
+        styleRange:        ['sec-sheet', 'sec-range', 'sec-style-hdr', 'sec-style', 'sec-autoCreate'],
+        mergeCell:         ['sec-sheet', 'sec-range', 'sec-autoCreate'],
+        setColumnWidth:    ['sec-sheet', 'sec-colRef', 'sec-colWidth', 'sec-colHidden', 'sec-autoCreate'],
+        setRowHeight:      ['sec-sheet', 'sec-rowNumber', 'sec-rowHeight', 'sec-rowHidden', 'sec-autoCreate'],
+        freezePanes:       ['sec-sheet', 'sec-freezeRow', 'sec-freezeCol', 'sec-autoCreate'],
+        readCell:          ['sec-sheet', 'sec-cell'],
+        readRange:         ['sec-sheet', 'sec-range'],
+        addTable:          ['sec-sheet', 'sec-tableName', 'sec-tableRef', 'sec-tableStyle',
+                            'sec-showRowStripes', 'sec-columns', 'sec-tableRows', 'sec-autoCreate'],
+        conditionalFormat: ['sec-sheet', 'sec-range', 'sec-cfRules'],
+        protect:           ['sec-protectTarget', 'sec-sheet', 'sec-password', 'sec-protect-hdr', 'sec-protectOpts'],
+        write:             ['sec-format', 'sec-filePath']
+    };
+
+    function updateSections(op) {
+        $('.exceljs-section').hide();
+        (OP_SECTIONS[op] || []).forEach(cls => $('.' + cls).show());
+        if (op === 'write') {
+            toggleFilePath();
+        }
+    }
+
+    function toggleFilePath() {
+        if ($('#node-input-format').val() === 'file') $('.sec-filePath').show();
+        else $('.sec-filePath').hide();
+    }
+
+    RED.nodes.registerType('exceljs', {
+        category:     'Office Docs',
+        color:        '#1D6F42',
+        icon:         'font-awesome/fa-file-excel-o',
+        inputs:       1,
+        outputs:      2,
+        outputLabels: ['success', 'error'],
+        paletteLabel: 'exceljs',
+
+        defaults: {
+            name:            { value: '' },
+            operation:       { value: 'create' },
+            operationType:   { value: 'str' },
+            autoCreateSheet: { value: true },
+            // create
+            creator:         { value: '' }, creatorType:         { value: 'str' },
+            lastModifiedBy:  { value: '' }, lastModifiedByType:  { value: 'str' },
+            // read
+            source:          { value: '' }, sourceType:          { value: 'str' },
+            // addSheet
+            sheetName:       { value: '' }, sheetNameType:       { value: 'str' },
+            tabColor:        { value: '' }, tabColorType:        { value: 'str' },
+            sheetState:      { value: 'visible' }, sheetStateType: { value: 'str' },
+            // shared: sheet
+            sheet:           { value: '' }, sheetType:           { value: 'str' },
+            // addRow
+            rowValues:       { value: '' }, rowValuesType:       { value: 'json' },
+            // addRows
+            rowsData:        { value: '' }, rowsDataType:        { value: 'json' },
+            // setCell
+            cell:            { value: '' }, cellType:            { value: 'str' },
+            cellValue:       { value: '' }, cellValueType:       { value: 'str' },
+            // style (shared between setCell and styleRange)
+            styleFontBold:   { value: '' }, styleFontBoldType:   { value: 'bool' },
+            styleFontSize:   { value: '' }, styleFontSizeType:   { value: 'num' },
+            styleFontColor:  { value: '' }, styleFontColorType:  { value: 'str' },
+            styleFillColor:  { value: '' }, styleFillColorType:  { value: 'str' },
+            styleNumFmt:     { value: '' }, styleNumFmtType:     { value: 'str' },
+            styleAlignment:  { value: '' }, styleAlignmentType:  { value: 'str' },
+            // shared: range
+            range:           { value: '' }, rangeType:           { value: 'str' },
+            // setColumnWidth
+            colRef:          { value: '' }, colRefType:          { value: 'str' },
+            colWidth:        { value: '' }, colWidthType:        { value: 'num' },
+            colHidden:       { value: '' }, colHiddenType:       { value: 'bool' },
+            // setRowHeight
+            rowNumber:       { value: '' }, rowNumberType:       { value: 'num' },
+            rowHeight:       { value: '' }, rowHeightType:       { value: 'num' },
+            rowHidden:       { value: '' }, rowHiddenType:       { value: 'bool' },
+            // freezePanes
+            freezeRow:       { value: '0' }, freezeRowType:       { value: 'num' },
+            freezeCol:       { value: '0' }, freezeColType:       { value: 'num' },
+            // addTable
+            tableName:       { value: '' }, tableNameType:       { value: 'str' },
+            tableRef:        { value: 'A1' }, tableRefType:      { value: 'str' },
+            tableStyle:      { value: 'TableStyleMedium9' }, tableStyleType: { value: 'str' },
+            showRowStripes:  { value: 'true' }, showRowStripesType: { value: 'bool' },
+            columns:         { value: '' }, columnsType:         { value: 'json' },
+            tableRows:       { value: '' }, tableRowsType:       { value: 'json' },
+            // conditionalFormat
+            cfRules:         { value: '' }, cfRulesType:         { value: 'json' },
+            // protect
+            protectTarget:   { value: 'sheet' }, protectTargetType: { value: 'str' },
+            password:        { value: '' }, passwordType:        { value: 'str' },
+            protectSelectLocked:   { value: 'true' },  protectSelectLockedType:   { value: 'bool' },
+            protectSelectUnlocked: { value: 'true' },  protectSelectUnlockedType: { value: 'bool' },
+            protectFormatCells:    { value: 'false' }, protectFormatCellsType:    { value: 'bool' },
+            protectFormatColumns:  { value: 'false' }, protectFormatColumnsType:  { value: 'bool' },
+            protectFormatRows:     { value: 'false' }, protectFormatRowsType:     { value: 'bool' },
+            protectInsertRows:     { value: 'false' }, protectInsertRowsType:     { value: 'bool' },
+            protectDeleteRows:     { value: 'false' }, protectDeleteRowsType:     { value: 'bool' },
+            protectSort:           { value: 'false' }, protectSortType:           { value: 'bool' },
+            protectAutoFilter:     { value: 'false' }, protectAutoFilterType:     { value: 'bool' },
+            // write
+            format:          { value: 'buffer' },
+            filePath:        { value: '' }, filePathType: { value: 'str' }
+        },
+
+        label: function () {
+            return this.name || 'exceljs: ' + (this.operation || 'create');
+        },
+
+        oneditprepare: function () {
+            const $op = $('#node-input-operation');
+            $op.empty();
+            OPERATIONS.forEach(o => $op.append(`<option value="${o.v}">${o.l}</option>`));
+            $op.val(this.operation || 'create');
+
+            const tiT = ['str', 'msg', 'env', 'jsonata'];
+            const tiJ = ['json', 'msg', 'env', 'jsonata'];
+            const tiB = ['bool', 'msg', 'env'];
+            const tiN = ['num', 'msg', 'env', 'jsonata'];
+
+            function ti(id, types) {
+                $('#node-input-' + id).typedInput({ typeField: '#node-input-' + id + 'Type', types });
+            }
+
+            ti('creator', tiT); ti('lastModifiedBy', tiT);
+            ti('source', tiT);
+            ti('sheetName', tiT); ti('tabColor', tiT); ti('sheetState', tiT);
+            ti('sheet', tiT);
+            ti('rowValues', tiJ); ti('rowsData', tiJ);
+            ti('cell', tiT); ti('cellValue', tiT);
+            ti('styleFontBold', tiB); ti('styleFontSize', tiN);
+            ti('styleFontColor', tiT); ti('styleFillColor', tiT);
+            ti('styleNumFmt', tiT); ti('styleAlignment', tiT);
+            ti('range', tiT);
+            ti('colRef', tiT); ti('colWidth', tiN); ti('colHidden', tiB);
+            ti('rowNumber', tiN); ti('rowHeight', tiN); ti('rowHidden', tiB);
+            ti('freezeRow', tiN); ti('freezeCol', tiN);
+            ti('tableName', tiT); ti('tableRef', tiT); ti('tableStyle', tiT);
+            ti('showRowStripes', tiB); ti('columns', tiJ); ti('tableRows', tiJ);
+            ti('cfRules', tiJ);
+            ti('protectTarget', tiT); ti('password', tiT);
+            ti('protectSelectLocked', tiB); ti('protectSelectUnlocked', tiB);
+            ti('protectFormatCells', tiB); ti('protectFormatColumns', tiB);
+            ti('protectFormatRows', tiB); ti('protectInsertRows', tiB);
+            ti('protectDeleteRows', tiB); ti('protectSort', tiB);
+            ti('protectAutoFilter', tiB);
+            ti('filePath', tiT);
+
+            $('#node-input-format').on('change', function () {
+                if ($('#node-input-operation').val() === 'write') toggleFilePath();
+            });
+
+            $op.on('change', function () { updateSections($(this).val()); });
+            updateSections(this.operation || 'create');
+        }
+    });
+}());
+</script>
+
+<script type="text/html" data-template-name="exceljs">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+    <div class="form-row">
+        <label for="node-input-operation"><i class="fa fa-cog"></i> Operation</label>
+        <select id="node-input-operation" style="width:70%"></select>
+    </div>
+    <div class="form-tips exceljs-section" style="margin-bottom:8px">
+        Override at runtime via <code>msg.operation</code>. Parameters set here can also be overridden via <code>msg.params</code>.
+    </div>
+
+    <!-- ── create ─────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-creator">
+        <label for="node-input-creator"><i class="fa fa-user"></i> Creator</label>
+        <input type="text" id="node-input-creator" placeholder="e.g. Node-RED">
+        <input type="hidden" id="node-input-creatorType">
+    </div>
+    <div class="form-row exceljs-section sec-lastModifiedBy">
+        <label for="node-input-lastModifiedBy"><i class="fa fa-pencil"></i> Modified by</label>
+        <input type="text" id="node-input-lastModifiedBy" placeholder="last modified by">
+        <input type="hidden" id="node-input-lastModifiedByType">
+    </div>
+
+    <!-- ── read ───────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-source">
+        <label for="node-input-source"><i class="fa fa-folder-open"></i> Source</label>
+        <input type="text" id="node-input-source" placeholder="/path/to/file.xlsx  or  msg.payload (Buffer)">
+        <input type="hidden" id="node-input-sourceType">
+    </div>
+
+    <!-- ── addSheet ───────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-sheetName">
+        <label for="node-input-sheetName"><i class="fa fa-table"></i> Sheet name</label>
+        <input type="text" id="node-input-sheetName" placeholder="Sheet1">
+        <input type="hidden" id="node-input-sheetNameType">
+    </div>
+    <div class="form-row exceljs-section sec-tabColor">
+        <label for="node-input-tabColor">
+            <i class="fa fa-tint"></i> Tab color
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="ARGB hex (8 digits, no #). FF = fully opaque. Example: FF0000FF = opaque blue."></i>
+        </label>
+        <input type="text" id="node-input-tabColor" placeholder="FF0000  (hex ARGB, no #)">
+        <input type="hidden" id="node-input-tabColorType">
+    </div>
+    <div class="form-row exceljs-section sec-sheetState">
+        <label for="node-input-sheetState"><i class="fa fa-eye"></i> Visibility</label>
+        <input type="text" id="node-input-sheetState" placeholder="visible | hidden | veryHidden">
+        <input type="hidden" id="node-input-sheetStateType">
+    </div>
+
+    <!-- ── setActiveSheet tip ───────────────────────────────────── -->
+    <div class="form-tips exceljs-section sec-setActiveSheet-tip" style="margin-bottom:6px">
+        Sets a <b>default sheet</b> on the workbook so you don't need to fill in the <em>Sheet</em> field on every subsequent operation.
+        The active sheet is stored on the workbook object (<code>_activeSheet</code>) and takes the lowest priority —
+        any explicit <em>Sheet</em> value in the panel or <code>msg.params.sheet</code> still overrides it.
+    </div>
+
+    <!-- ── getInfo tip ──────────────────────────────────────────── -->
+    <div class="form-tips exceljs-section sec-getInfo-tip" style="margin-bottom:6px">
+        Returns workbook metadata without modifying anything.<br>
+        <b>msg.payload</b> → <code>{"sheetCount": 3, "sheets": [{"name":"Sheet1","rowCount":100,"actualRowCount":42,"columnCount":5,"usedRange":{…},"state":"visible"}, …]}</code><br>
+        The original workbook is preserved in <b>msg._doc</b> so the chain can continue.
+    </div>
+
+    <!-- ── shared: sheet ──────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-sheet">
+        <label for="node-input-sheet"><i class="fa fa-table"></i> Sheet</label>
+        <input type="text" id="node-input-sheet" placeholder="Sheet name">
+        <input type="hidden" id="node-input-sheetType">
+    </div>
+
+    <!-- ── auto-create toggle ─────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-autoCreate">
+        <label>&nbsp;</label>
+        <input type="checkbox" id="node-input-autoCreateSheet" style="display:inline-block;width:auto;margin-right:6px">
+        <label for="node-input-autoCreateSheet" style="width:auto">Auto-create sheet if not found</label>
+    </div>
+
+    <!-- ── addRow ─────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-rowValues">
+        <label for="node-input-rowValues"><i class="fa fa-list"></i> Values</label>
+        <input type="text" id="node-input-rowValues" placeholder='["Q1","Rossi",48500]  or  {col:val}'>
+        <input type="hidden" id="node-input-rowValuesType">
+    </div>
+
+    <!-- ── addRows ────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-rowsData">
+        <label for="node-input-rowsData"><i class="fa fa-list-ol"></i> Rows</label>
+        <input type="text" id="node-input-rowsData" placeholder='[["Q1","Rossi",48500],[...]]'>
+        <input type="hidden" id="node-input-rowsDataType">
+    </div>
+
+    <!-- ── setCell: cell + value ──────────────────────────────── -->
+    <div class="form-row exceljs-section sec-cell">
+        <label for="node-input-cell">
+            <i class="fa fa-map-marker"></i> Cell
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="A1 notation (e.g. B3) or pass {row:3,col:2} via msg.params.cell."></i>
+        </label>
+        <input type="text" id="node-input-cell" placeholder='B3  or  {"row":3,"col":2}'>
+        <input type="hidden" id="node-input-cellType">
+    </div>
+    <div class="form-row exceljs-section sec-cellValue">
+        <label for="node-input-cellValue"><i class="fa fa-pencil"></i> Value</label>
+        <input type="text" id="node-input-cellValue" placeholder='48500  or  =SUM(A1:A10)'>
+        <input type="hidden" id="node-input-cellValueType">
+    </div>
+    <div class="form-tips exceljs-section sec-cellValue" style="margin-bottom:6px">
+        Start with <code>=</code> to write a formula (e.g. <code>=SUM(A1:A10)</code>). Dates should be passed as JS <code>Date</code> objects via <code>msg.params.cellValue</code>.
+    </div>
+
+    <!-- ── shared: range ──────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-range">
+        <label for="node-input-range">
+            <i class="fa fa-expand"></i> Range
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Cell range in A1:B2 notation. Both endpoints inclusive."></i>
+        </label>
+        <input type="text" id="node-input-range" placeholder="A1:D10">
+        <input type="hidden" id="node-input-rangeType">
+    </div>
+
+    <!-- ── style section header ───────────────────────────────── -->
+    <div class="form-row exceljs-section sec-style-hdr" style="border-top:1px solid #ddd;margin-top:6px;padding-top:8px">
+        <label style="width:auto;font-weight:600;color:#555"><i class="fa fa-paint-brush"></i> Cell style</label>
+        <span style="font-size:11px;color:#999;margin-left:8px">All fields optional — leave blank to skip</span>
+    </div>
+    <div class="form-tips exceljs-section sec-style-hdr" style="margin-bottom:6px">
+        Font and fill colors use <b>ARGB hex</b> (8 digits, no <code>#</code>): first two digits = alpha (<code>FF</code> = fully opaque). Examples: <code>FF000000</code> = black, <code>FFFF0000</code> = red, <code>FFFFFF00</code> = yellow fill.<br>
+        Override the entire style object at runtime with <code>msg.params.style</code>.
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleFontBold"><i class="fa fa-bold"></i> Font bold</label>
+        <input type="text" id="node-input-styleFontBold">
+        <input type="hidden" id="node-input-styleFontBoldType">
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleFontSize"><i class="fa fa-text-height"></i> Font size (pt)</label>
+        <input type="text" id="node-input-styleFontSize" placeholder="12">
+        <input type="hidden" id="node-input-styleFontSizeType">
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleFontColor"><i class="fa fa-font"></i> Font color</label>
+        <input type="text" id="node-input-styleFontColor" placeholder="FF000000  (ARGB hex)">
+        <input type="hidden" id="node-input-styleFontColorType">
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleFillColor"><i class="fa fa-tint"></i> Fill color</label>
+        <input type="text" id="node-input-styleFillColor" placeholder="FFFFFF00  (ARGB hex)">
+        <input type="hidden" id="node-input-styleFillColorType">
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleNumFmt"><i class="fa fa-hashtag"></i> Number format</label>
+        <input type="text" id="node-input-styleNumFmt" placeholder='#,##0.00  or  "dd/mm/yyyy"'>
+        <input type="hidden" id="node-input-styleNumFmtType">
+    </div>
+    <div class="form-row exceljs-section sec-style">
+        <label for="node-input-styleAlignment"><i class="fa fa-align-center"></i> H-Alignment</label>
+        <input type="text" id="node-input-styleAlignment" placeholder="left | center | right | fill">
+        <input type="hidden" id="node-input-styleAlignmentType">
+    </div>
+
+    <!-- ── setColumnWidth ────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-colRef">
+        <label for="node-input-colRef">
+            <i class="fa fa-columns"></i> Column
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Column letter (e.g. A, B, C) or 1-based number. ExcelJS accepts both."></i>
+        </label>
+        <input type="text" id="node-input-colRef" placeholder="A  or  1">
+        <input type="hidden" id="node-input-colRefType">
+    </div>
+    <div class="form-row exceljs-section sec-colWidth">
+        <label for="node-input-colWidth">
+            <i class="fa fa-arrows-h"></i> Width
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Character width units (approximately equal to the width of one digit in the default font). Default Excel column width is ~8.43."></i>
+        </label>
+        <input type="text" id="node-input-colWidth" placeholder="15">
+        <input type="hidden" id="node-input-colWidthType">
+    </div>
+    <div class="form-row exceljs-section sec-colHidden">
+        <label for="node-input-colHidden">
+            <i class="fa fa-eye-slash"></i> Hidden
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Set to true to hide the column from view (can be unhidden in Excel)."></i>
+        </label>
+        <input type="text" id="node-input-colHidden">
+        <input type="hidden" id="node-input-colHiddenType">
+    </div>
+
+    <!-- ── setRowHeight ──────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-rowNumber">
+        <label for="node-input-rowNumber">
+            <i class="fa fa-list-ol"></i> Row number
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="1-based row number."></i>
+        </label>
+        <input type="text" id="node-input-rowNumber" placeholder="1">
+        <input type="hidden" id="node-input-rowNumberType">
+    </div>
+    <div class="form-row exceljs-section sec-rowHeight">
+        <label for="node-input-rowHeight">
+            <i class="fa fa-arrows-v"></i> Height
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Height in points (pt). Default Excel row height is ~15 pt."></i>
+        </label>
+        <input type="text" id="node-input-rowHeight" placeholder="20">
+        <input type="hidden" id="node-input-rowHeightType">
+    </div>
+    <div class="form-row exceljs-section sec-rowHidden">
+        <label for="node-input-rowHidden">
+            <i class="fa fa-eye-slash"></i> Hidden
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Set to true to hide the row from view."></i>
+        </label>
+        <input type="text" id="node-input-rowHidden">
+        <input type="hidden" id="node-input-rowHiddenType">
+    </div>
+
+    <!-- ── freezePanes ───────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-freezeRow">
+        <label for="node-input-freezeRow">
+            <i class="fa fa-lock"></i> Freeze rows
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Number of rows to freeze from the top. 1 = freeze first row (header). 0 = no row freeze."></i>
+        </label>
+        <input type="text" id="node-input-freezeRow" placeholder="0">
+        <input type="hidden" id="node-input-freezeRowType">
+    </div>
+    <div class="form-row exceljs-section sec-freezeCol">
+        <label for="node-input-freezeCol">
+            <i class="fa fa-lock"></i> Freeze cols
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Number of columns to freeze from the left. 1 = freeze column A. 0 = no column freeze."></i>
+        </label>
+        <input type="text" id="node-input-freezeCol" placeholder="0">
+        <input type="hidden" id="node-input-freezeColType">
+    </div>
+    <div class="form-tips exceljs-section sec-freezeRow sec-freezeCol" style="margin-bottom:6px">
+        Set freezeRow=1 to freeze the header row. Setting both to 0 has no effect.
+    </div>
+
+    <!-- ── readCell tip ──────────────────────────────────────── -->
+    <div class="form-tips exceljs-section sec-readCell" style="margin-bottom:6px">
+        Returns <code>{address, value, text, type, formula}</code> on <code>msg.payload</code>. Original workbook preserved in <code>msg._doc</code>.
+    </div>
+
+    <!-- ── readRange tip ─────────────────────────────────────── -->
+    <div class="form-tips exceljs-section sec-readRange" style="margin-bottom:6px">
+        Returns a 2D array <code>[[v1,v2],[v3,v4]]</code> on <code>msg.payload</code>. Cells inside a merge (except top-left) return <code>null</code>. Original workbook preserved in <code>msg._doc</code>.
+    </div>
+
+    <!-- ── addTable ───────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-tableName">
+        <label for="node-input-tableName"><i class="fa fa-tag"></i> Table name</label>
+        <input type="text" id="node-input-tableName" placeholder="Table1  (unique within workbook)">
+        <input type="hidden" id="node-input-tableNameType">
+    </div>
+    <div class="form-row exceljs-section sec-tableRef">
+        <label for="node-input-tableRef"><i class="fa fa-map-marker"></i> Anchor cell</label>
+        <input type="text" id="node-input-tableRef" placeholder="A1">
+        <input type="hidden" id="node-input-tableRefType">
+    </div>
+    <div class="form-row exceljs-section sec-tableStyle">
+        <label for="node-input-tableStyle"><i class="fa fa-th"></i> Table style</label>
+        <input type="text" id="node-input-tableStyle" placeholder="TableStyleMedium9">
+        <input type="hidden" id="node-input-tableStyleType">
+    </div>
+    <div class="form-row exceljs-section sec-showRowStripes">
+        <label for="node-input-showRowStripes"><i class="fa fa-bars"></i> Row stripes</label>
+        <input type="text" id="node-input-showRowStripes">
+        <input type="hidden" id="node-input-showRowStripesType">
+    </div>
+    <div class="form-row exceljs-section sec-columns">
+        <label for="node-input-columns"><i class="fa fa-columns"></i> Columns</label>
+        <input type="text" id="node-input-columns" placeholder='[{"name":"Col1","filterButton":true},{"name":"Col2"}]'>
+        <input type="hidden" id="node-input-columnsType">
+    </div>
+    <div class="form-tips exceljs-section sec-columns" style="margin-bottom:6px">
+        Each column: <code>{"name":"Header","filterButton":true,"totalsRowFunction":"sum"}</code>. Column count must match the width of each row in <em>Rows data</em>.
+    </div>
+    <div class="form-row exceljs-section sec-tableRows">
+        <label for="node-input-tableRows"><i class="fa fa-list"></i> Rows data</label>
+        <input type="text" id="node-input-tableRows" placeholder='[["Q1","Rossi",48500],[...]]'>
+        <input type="hidden" id="node-input-tableRowsType">
+    </div>
+
+    <!-- ── conditionalFormat ──────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-cfRules">
+        <label for="node-input-cfRules">
+            <i class="fa fa-filter"></i> CF Rules
+            <i class="fa fa-question-circle" style="color:#aaa;font-size:10px;cursor:help;margin-left:3px" title="Array of ExcelJS conditional formatting rule objects. See ExcelJS docs for full schema."></i>
+        </label>
+        <input type="text" id="node-input-cfRules" placeholder='[{"type":"cellIs","operator":"greaterThan","formulae":[50000],"style":{...}}]'>
+        <input type="hidden" id="node-input-cfRulesType">
+    </div>
+    <div class="form-tips exceljs-section sec-cfRules" style="margin-bottom:6px">
+        Each rule follows the ExcelJS <code>ConditionalFormatting</code> schema. Common types: <code>cellIs</code>, <code>expression</code>, <code>colorScale</code>, <code>dataBar</code>, <code>iconSet</code>, <code>top10</code>.<br>
+        The <code>style</code> property uses the same font/fill/numFmt shape as the Cell style above.
+    </div>
+
+    <!-- ── protect ────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-protectTarget">
+        <label for="node-input-protectTarget"><i class="fa fa-lock"></i> Target</label>
+        <input type="text" id="node-input-protectTarget" placeholder="sheet | workbook">
+        <input type="hidden" id="node-input-protectTargetType">
+    </div>
+    <div class="form-row exceljs-section sec-password">
+        <label for="node-input-password"><i class="fa fa-key"></i> Password</label>
+        <input type="text" id="node-input-password" placeholder="leave empty for no password">
+        <input type="hidden" id="node-input-passwordType">
+    </div>
+
+    <div class="form-row exceljs-section sec-protect-hdr" style="border-top:1px solid #ddd;margin-top:6px;padding-top:8px">
+        <label style="width:auto;font-weight:600;color:#555"><i class="fa fa-shield"></i> Protection options</label>
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectSelectLocked">Select locked</label>
+        <input type="text" id="node-input-protectSelectLocked">
+        <input type="hidden" id="node-input-protectSelectLockedType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectSelectUnlocked">Select unlocked</label>
+        <input type="text" id="node-input-protectSelectUnlocked">
+        <input type="hidden" id="node-input-protectSelectUnlockedType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectFormatCells">Format cells</label>
+        <input type="text" id="node-input-protectFormatCells">
+        <input type="hidden" id="node-input-protectFormatCellsType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectFormatColumns">Format columns</label>
+        <input type="text" id="node-input-protectFormatColumns">
+        <input type="hidden" id="node-input-protectFormatColumnsType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectFormatRows">Format rows</label>
+        <input type="text" id="node-input-protectFormatRows">
+        <input type="hidden" id="node-input-protectFormatRowsType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectInsertRows">Insert rows</label>
+        <input type="text" id="node-input-protectInsertRows">
+        <input type="hidden" id="node-input-protectInsertRowsType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectDeleteRows">Delete rows</label>
+        <input type="text" id="node-input-protectDeleteRows">
+        <input type="hidden" id="node-input-protectDeleteRowsType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectSort">Sort</label>
+        <input type="text" id="node-input-protectSort">
+        <input type="hidden" id="node-input-protectSortType">
+    </div>
+    <div class="form-row exceljs-section sec-protectOpts">
+        <label for="node-input-protectAutoFilter">Auto filter</label>
+        <input type="text" id="node-input-protectAutoFilter">
+        <input type="hidden" id="node-input-protectAutoFilterType">
+    </div>
+
+    <!-- ── write ──────────────────────────────────────────────── -->
+    <div class="form-row exceljs-section sec-format">
+        <label for="node-input-format"><i class="fa fa-save"></i> Format</label>
+        <select id="node-input-format" style="width:70%">
+            <option value="buffer">buffer — Node.js Buffer</option>
+            <option value="base64">base64 — Base64 string</option>
+            <option value="file">file — write to disk</option>
+        </select>
+    </div>
+    <div class="form-row exceljs-section sec-filePath">
+        <label for="node-input-filePath"><i class="fa fa-folder"></i> File path</label>
+        <input type="text" id="node-input-filePath" placeholder="/var/reports/report.xlsx">
+        <input type="hidden" id="node-input-filePathType">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="exceljs">
+    <p>Creates and manipulates Excel workbooks using <a href="https://exceljs.readthedocs.io/" target="_blank">ExcelJS</a>.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">Workbook | null</span></dt>
+        <dd>ExcelJS Workbook. <code>null</code> for <code>create</code>.</dd>
+        <dt class="optional">operation <span class="property-type">string</span></dt>
+        <dd>Runtime override of the panel operation.</dd>
+        <dt class="optional">params <span class="property-type">object</span></dt>
+        <dd>Runtime override of individual panel fields (e.g. <code>msg.params.sheet</code>).</dd>
+        <dt class="optional">contextKey <span class="property-type">string</span></dt>
+        <dd>Flow-context key for shared workbooks across parallel branches.</dd>
+    </dl>
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li>Success — <code>msg.payload</code>: updated Workbook or serialised output after <code>write</code>.</li>
+        <li>Error — <code>msg.error</code>: <code>{ message, operation, params, stack }</code>.</li>
+    </ol>
+    <h3>Operations</h3>
+    <dl>
+        <dt>create</dt><dd>Creates a new, empty ExcelJS Workbook.</dd>
+        <dt>read</dt><dd>Loads a workbook from a file path or a Buffer.</dd>
+        <dt>addSheet</dt><dd>Adds a new worksheet to the workbook.</dd>
+        <dt>setActiveSheet</dt><dd>Sets a default sheet so subsequent operations don't need <code>sheet</code> configured. Overridden by any explicit <em>Sheet</em> value.</dd>
+        <dt>getInfo</dt><dd>Returns workbook metadata (<code>sheetCount</code>, <code>sheets[]</code> with name, row counts, state). Workbook preserved in <code>msg._doc</code>.</dd>
+        <dt>addRow</dt><dd>Appends a single row (array or key/value object) to a sheet.</dd>
+        <dt>addRows</dt><dd>Appends multiple rows (array of arrays) to a sheet.</dd>
+        <dt>setCell</dt><dd>Writes a value and/or style to a single cell.</dd>
+        <dt>styleRange</dt><dd>Applies a style to every cell in a range (e.g. <code>A1:D10</code>).</dd>
+        <dt>mergeCell</dt><dd>Merges all cells within a given range.</dd>
+        <dt>setColumnWidth</dt><dd>Sets the width and/or hidden state of a column.</dd>
+        <dt>setRowHeight</dt><dd>Sets the height and/or hidden state of a row.</dd>
+        <dt>freezePanes</dt><dd>Freezes the top N rows and/or left N columns of a sheet.</dd>
+        <dt>readCell</dt><dd>Reads a single cell and returns <code>{address, value, text, type, formula}</code> on <code>msg.payload</code>. Original workbook is preserved in <code>msg._doc</code>.</dd>
+        <dt>readRange</dt><dd>Reads a range and returns a 2D array on <code>msg.payload</code>. Merged cells (except top-left) return <code>null</code>. Original workbook is preserved in <code>msg._doc</code>.</dd>
+        <dt>addTable</dt><dd>Inserts a structured Excel table.</dd>
+        <dt>conditionalFormat</dt><dd>Applies conditional formatting rules to a range.</dd>
+        <dt>protect</dt><dd>Protects a sheet or the entire workbook with an optional password.</dd>
+        <dt>write</dt><dd>Serialises the workbook to a Buffer, Base64 string, or file on disk.</dd>
+    </dl>
+    <h3>Style fields (setCell / styleRange)</h3>
+    <p>Font color and fill color use ARGB hex notation, e.g. <code>FF000000</code> = opaque black, <code>FFFFFF00</code> = opaque yellow. The full style can also be overridden at runtime via <code>msg.params.style</code>.</p>
+</script>

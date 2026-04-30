@@ -1,0 +1,578 @@
+<!-- Docx Node - Editor Panel -->
+<script type="text/javascript">
+    (function () {
+
+        const OPERATIONS = [
+            { v: 'create',       l: 'create — new document' },
+            { v: 'addHeading',   l: 'addHeading — insert heading' },
+            { v: 'addParagraph', l: 'addParagraph — insert paragraph' },
+            { v: 'addList',      l: 'addList — insert list (bullet / numbered)' },
+            { v: 'addTable',     l: 'addTable — insert table' },
+            { v: 'addImage',     l: 'addImage — insert image' },
+            { v: 'addHeader',    l: 'addHeader — add page header' },
+            { v: 'addFooter',    l: 'addFooter — add page footer' },
+            { v: 'pageBreak',    l: 'pageBreak — page break' },
+            { v: 'write',        l: 'write — serialize to file / buffer / base64' }
+        ];
+
+        const OP_SECTIONS = {
+            create: ['sec-title', 'sec-author', 'sec-pageSize', 'sec-margins', 'sec-defaultFont'],
+            addHeading: ['sec-headingText', 'sec-headingLevel', 'sec-headingStyle-hdr', 'sec-headingStyle'],
+            addParagraph: ['sec-paraText', 'sec-paraRuns', 'sec-paraAlignment', 'sec-paraSpacing', 'sec-paraStyle-hdr', 'sec-paraStyle'],
+            addList: ['sec-listType', 'sec-listItems'],
+            addTable: ['sec-tableRows', 'sec-tableHeaderRow', 'sec-columnWidths', 'sec-tableBorders', 'sec-tableHeaderStyle-hdr', 'sec-tableHeaderStyle'],
+            addImage:  ['sec-imageSource', 'sec-imageWidth', 'sec-imageHeight', 'sec-imageAltText'],
+            addHeader: ['sec-headerText', 'sec-headerType', 'sec-headerAlignment'],
+            addFooter: ['sec-footerText', 'sec-footerType', 'sec-footerAlignment', 'sec-footerShowPageNum'],
+            pageBreak: [],
+            write:     ['sec-format', 'sec-filePath']
+        };
+
+        function updateSections(op) {
+            $('.docx-section').hide();
+            (OP_SECTIONS[op] || []).forEach(cls => $('.' + cls).show());
+            if (op === 'write') {
+                const fmt = $('#node-input-format').val();
+                if (fmt === 'file') $('.sec-filePath').show();
+                else $('.sec-filePath').hide();
+            }
+        }
+
+        RED.nodes.registerType('docx', {
+            category: 'Office Docs',
+            color: '#1657f4',
+            icon: 'font-awesome/fa-file-word-o',
+            inputs: 1,
+            outputs: 2,
+            outputLabels: ['success', 'error'],
+            paletteLabel: 'docx',
+
+            defaults: {
+                name: { value: '' },
+                operation: { value: 'create' },
+                operationType: { value: 'str' },
+                // create
+                title: { value: '' },
+                titleType: { value: 'str' },
+                author: { value: '' },
+                authorType: { value: 'str' },
+                pageSize: { value: '' },
+                pageSizeType: { value: 'json' },
+                margins: { value: '' },
+                marginsType: { value: 'json' },
+                defaultFont: { value: '' },
+                defaultFontType: { value: 'json' },
+                // addHeading
+                headingText: { value: '' },
+                headingTextType: { value: 'str' },
+                headingLevel: { value: '1' },
+                headingLevelType: { value: 'num' },
+                headingBold: { value: '' },
+                headingBoldType: { value: 'bool' },
+                headingColor: { value: '' },
+                headingColorType: { value: 'str' },
+                headingFontSize: { value: '' },
+                headingFontSizeType: { value: 'num' },
+                // addParagraph
+                paraText: { value: '' },
+                paraTextType: { value: 'str' },
+                paraRuns: { value: '' },
+                paraRunsType: { value: 'json' },
+                paraAlignment: { value: 'left' },
+                paraAlignmentType: { value: 'str' },
+                paraSpacing: { value: '' },
+                paraSpacingType: { value: 'json' },
+                paraBold: { value: '' },
+                paraBoldType: { value: 'bool' },
+                paraItalic: { value: '' },
+                paraItalicType: { value: 'bool' },
+                paraUnderline: { value: '' },
+                paraUnderlineType: { value: 'bool' },
+                paraColor: { value: '' },
+                paraColorType: { value: 'str' },
+                paraFontSize: { value: '' },
+                paraFontSizeType: { value: 'num' },
+                paraFont: { value: '' },
+                paraFontType: { value: 'str' },
+                // addList
+                listType: { value: 'bullet' },
+                listTypeType: { value: 'str' },
+                listItems: { value: '' },
+                listItemsType: { value: 'json' },
+                // addTable
+                tableRows: { value: '' },
+                tableRowsType: { value: 'json' },
+                tableHeaderRow: { value: 'false' },
+                tableHeaderRowType: { value: 'bool' },
+                columnWidths: { value: '' },
+                columnWidthsType: { value: 'json' },
+                tableBorders: { value: 'true' },
+                tableBordersType: { value: 'bool' },
+                tableHeaderBold: { value: '' },
+                tableHeaderBoldType: { value: 'bool' },
+                tableHeaderFill: { value: '' },
+                tableHeaderFillType: { value: 'str' },
+                tableHeaderColor: { value: '' },
+                tableHeaderColorType: { value: 'str' },
+                // addImage
+                imageSource: { value: '' },
+                imageSourceType: { value: 'str' },
+                imageWidth: { value: '200' },
+                imageWidthType: { value: 'num' },
+                imageHeight: { value: '150' },
+                imageHeightType: { value: 'num' },
+                imageAltText: { value: '' },
+                imageAltTextType: { value: 'str' },
+                // addHeader
+                headerText: { value: '' },
+                headerTextType: { value: 'str' },
+                headerType: { value: 'default' },
+                headerTypeType: { value: 'str' },
+                headerAlignment: { value: 'left' },
+                headerAlignmentType: { value: 'str' },
+                // addFooter
+                footerText: { value: '' },
+                footerTextType: { value: 'str' },
+                footerType: { value: 'default' },
+                footerTypeType: { value: 'str' },
+                footerAlignment: { value: 'center' },
+                footerAlignmentType: { value: 'str' },
+                footerShowPageNum: { value: 'false' },
+                footerShowPageNumType: { value: 'bool' },
+                // write
+                format: { value: 'buffer' },
+                formatType: { value: 'str' },
+                filePath: { value: '' },
+                filePathType: { value: 'str' }
+            },
+
+            label: function () {
+                return this.name || 'docx: ' + (this.operation || 'create');
+            },
+
+            oneditprepare: function () {
+                const $op = $('#node-input-operation');
+                $op.empty();
+                OPERATIONS.forEach(o => $op.append(`<option value="${o.v}">${o.l}</option>`));
+                $op.val(this.operation || 'create');
+
+                const tiText = ['str', 'msg', 'env', 'jsonata'];
+                const tiJson = ['json', 'msg', 'env', 'jsonata'];
+                const tiBool = ['bool', 'msg', 'env'];
+                const tiNum = ['num', 'msg', 'env', 'jsonata'];
+
+                function ti(id, types) {
+                    $('#node-input-' + id).typedInput({ typeField: '#node-input-' + id + 'Type', types });
+                }
+
+                ti('title', tiText);
+                ti('author', tiText);
+                ti('pageSize', tiJson);
+                ti('margins', tiJson);
+                ti('defaultFont', tiJson);
+                ti('headingText', tiText);
+                ti('headingLevel', tiNum);
+                ti('headingBold', tiBool);
+                ti('headingColor', tiText);
+                ti('headingFontSize', tiNum);
+                ti('paraText', tiText);
+                ti('paraRuns', tiJson);
+                ti('paraAlignment', tiText);
+                ti('paraSpacing', tiJson);
+                ti('paraBold', tiBool);
+                ti('paraItalic', tiBool);
+                ti('paraUnderline', tiBool);
+                ti('paraColor', tiText);
+                ti('paraFontSize', tiNum);
+                ti('paraFont', tiText);
+                ti('listType', tiText);
+                ti('listItems', tiJson);
+                ti('tableRows', tiJson);
+                ti('tableHeaderRow', tiBool);
+                ti('columnWidths', tiJson);
+                ti('tableBorders', tiBool);
+                ti('tableHeaderBold', tiBool);
+                ti('tableHeaderFill', tiText);
+                ti('tableHeaderColor', tiText);
+                ti('imageSource', tiText);
+                ti('imageWidth', tiNum);
+                ti('imageHeight', tiNum);
+                ti('imageAltText', tiText);
+                ti('headerText', tiText);
+                ti('headerType', tiText);
+                ti('headerAlignment', tiText);
+                ti('footerText', tiText);
+                ti('footerType', tiText);
+                ti('footerAlignment', tiText);
+                ti('footerShowPageNum', tiBool);
+                ti('filePath', tiText);
+
+                $('#node-input-format').on('change', function () {
+                    if ($('#node-input-operation').val() === 'write') {
+                        if ($(this).val() === 'file') $('.sec-filePath').show();
+                        else $('.sec-filePath').hide();
+                    }
+                });
+
+                $op.on('change', function () { updateSections($(this).val()); });
+                updateSections(this.operation || 'create');
+            }
+        });
+    }());
+</script>
+
+<!-- Node template -->
+<script type="text/html" data-template-name="docx">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-operation"><i class="fa fa-cog"></i> Operation</label>
+        <select id="node-input-operation" style="width:70%"></select>
+    </div>
+    <div class="form-row" style="color:#999;font-size:11px;margin-top:-8px;padding-left:115px">
+        Override at runtime via <code>msg.operation</code>
+    </div>
+
+    <!-- create -->
+    <div class="form-row docx-section sec-title">
+        <label for="node-input-title"><i class="fa fa-header"></i> Title</label>
+        <input type="text" id="node-input-title" placeholder="Document title">
+        <input type="hidden" id="node-input-titleType">
+    </div>
+    <div class="form-row docx-section sec-author">
+        <label for="node-input-author"><i class="fa fa-user"></i> Author</label>
+        <input type="text" id="node-input-author" placeholder="Author name">
+        <input type="hidden" id="node-input-authorType">
+    </div>
+    <div class="form-row docx-section sec-pageSize">
+        <label for="node-input-pageSize"><i class="fa fa-file-o"></i> Page size</label>
+        <input type="text" id="node-input-pageSize" placeholder='{"width":12240,"height":15840}'>
+        <input type="hidden" id="node-input-pageSizeType">
+    </div>
+    <div class="form-row docx-section sec-margins">
+        <label for="node-input-margins"><i class="fa fa-crop"></i> Margins</label>
+        <input type="text" id="node-input-margins" placeholder='{"top":1440,"right":1440,"bottom":1440,"left":1440}'>
+        <input type="hidden" id="node-input-marginsType">
+    </div>
+    <div class="form-tips docx-section sec-pageSize sec-margins" style="margin-bottom:6px">
+        Dimensions are in <b>DXA (twips)</b>: 1 inch = 1440 DXA, 1 cm ≈ 567 DXA.<br>
+        Common page sizes: US Letter = 12240 × 15840 &nbsp;|&nbsp; A4 ≈ 11906 × 16838
+    </div>
+    <div class="form-row docx-section sec-defaultFont">
+        <label for="node-input-defaultFont"><i class="fa fa-font"></i> Default font</label>
+        <input type="text" id="node-input-defaultFont" placeholder='{"name":"Arial","size":24}'>
+        <input type="hidden" id="node-input-defaultFontType">
+    </div>
+    <div class="form-tips docx-section sec-defaultFont" style="margin-bottom:6px">
+        <b>size</b> is in <b>half-points</b>: 24 = 12 pt, 28 = 14 pt, 32 = 16 pt.
+    </div>
+
+    <!-- addHeading -->
+    <div class="form-row docx-section sec-headingText">
+        <label for="node-input-headingText"><i class="fa fa-header"></i> Text</label>
+        <input type="text" id="node-input-headingText" placeholder="Heading text">
+        <input type="hidden" id="node-input-headingTextType">
+    </div>
+    <div class="form-row docx-section sec-headingLevel">
+        <label for="node-input-headingLevel"><i class="fa fa-sort-numeric-asc"></i> Level</label>
+        <input type="text" id="node-input-headingLevel" placeholder="1–6">
+        <input type="hidden" id="node-input-headingLevelType">
+    </div>
+    <div class="form-tips docx-section sec-headingStyle-hdr" style="margin-bottom:6px">
+        <b>Heading style</b> — all fields optional. Leave blank to use the Word built-in heading style.<br>
+        Color: 6-digit hex without <code>#</code> (e.g. <code>2E75B6</code>). Font size in half-points (32 = 16 pt).<br>
+        To pass a full style object at runtime use <code>msg.params.style</code>.
+    </div>
+    <div class="form-row docx-section sec-headingStyle">
+        <label for="node-input-headingBold"><i class="fa fa-bold"></i> Bold</label>
+        <input type="text" id="node-input-headingBold">
+        <input type="hidden" id="node-input-headingBoldType">
+    </div>
+    <div class="form-row docx-section sec-headingStyle">
+        <label for="node-input-headingColor"><i class="fa fa-tint"></i> Color (hex)</label>
+        <input type="text" id="node-input-headingColor" placeholder="e.g. 2E75B6">
+        <input type="hidden" id="node-input-headingColorType">
+    </div>
+    <div class="form-row docx-section sec-headingStyle">
+        <label for="node-input-headingFontSize"><i class="fa fa-text-height"></i> Font size</label>
+        <input type="text" id="node-input-headingFontSize" placeholder="half-points, e.g. 32">
+        <input type="hidden" id="node-input-headingFontSizeType">
+    </div>
+
+    <!-- addParagraph -->
+    <div class="form-row docx-section sec-paraText">
+        <label for="node-input-paraText"><i class="fa fa-paragraph"></i> Text</label>
+        <input type="text" id="node-input-paraText" placeholder="Paragraph text (ignored when runs is set)">
+        <input type="hidden" id="node-input-paraTextType">
+    </div>
+    <div class="form-row docx-section sec-paraRuns">
+        <label for="node-input-paraRuns"><i class="fa fa-text-width"></i> Runs</label>
+        <input type="text" id="node-input-paraRuns" placeholder='[{"text":"bold","bold":true},{"text":" normal"}]'>
+        <input type="hidden" id="node-input-paraRunsType">
+    </div>
+    <div class="form-tips docx-section sec-paraRuns" style="margin-bottom:6px">
+        Each run is <code>{"text":"…","bold":true,"italic":true,"underline":true,"color":"FF0000","size":24,"font":"Arial"}</code>. When Runs is set, the <em>Text</em> field and style fields below are ignored.
+    </div>
+    <div class="form-row docx-section sec-paraAlignment">
+        <label for="node-input-paraAlignment"><i class="fa fa-align-left"></i> Alignment</label>
+        <input type="text" id="node-input-paraAlignment" placeholder="left | center | right | justified | both">
+        <input type="hidden" id="node-input-paraAlignmentType">
+    </div>
+    <div class="form-row docx-section sec-paraSpacing">
+        <label for="node-input-paraSpacing"><i class="fa fa-arrows-v"></i> Spacing</label>
+        <input type="text" id="node-input-paraSpacing" placeholder='{"before":120,"after":120}'>
+        <input type="hidden" id="node-input-paraSpacingType">
+    </div>
+    <div class="form-tips docx-section sec-paraSpacing" style="margin-bottom:6px">
+        <b>before</b> / <b>after</b> are in <b>twips</b> (1/20 pt). 240 = 12 pt gap. <b>line</b> sets line spacing (e.g. <code>{"line":360,"lineRule":"auto"}</code> for 1.5× spacing).
+    </div>
+    <div class="form-tips docx-section sec-paraStyle-hdr" style="margin-bottom:6px">
+        <b>Paragraph style</b> — all fields optional. Leave blank to inherit document defaults.<br>
+        Colors: 6-digit hex without <code>#</code>. Font size in half-points (24 = 12 pt). <b>Runs</b> field (above) takes precedence over style for inline mixed formatting.<br>
+        Full style object override at runtime: <code>msg.params.style</code>.
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraBold"><i class="fa fa-bold"></i> Bold</label>
+        <input type="text" id="node-input-paraBold">
+        <input type="hidden" id="node-input-paraBoldType">
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraItalic"><i class="fa fa-italic"></i> Italic</label>
+        <input type="text" id="node-input-paraItalic">
+        <input type="hidden" id="node-input-paraItalicType">
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraUnderline"><i class="fa fa-underline"></i> Underline</label>
+        <input type="text" id="node-input-paraUnderline">
+        <input type="hidden" id="node-input-paraUnderlineType">
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraColor"><i class="fa fa-tint"></i> Color (hex)</label>
+        <input type="text" id="node-input-paraColor" placeholder="e.g. 333333">
+        <input type="hidden" id="node-input-paraColorType">
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraFontSize"><i class="fa fa-text-height"></i> Font size</label>
+        <input type="text" id="node-input-paraFontSize" placeholder="half-points, e.g. 24">
+        <input type="hidden" id="node-input-paraFontSizeType">
+    </div>
+    <div class="form-row docx-section sec-paraStyle">
+        <label for="node-input-paraFont"><i class="fa fa-font"></i> Font name</label>
+        <input type="text" id="node-input-paraFont" placeholder="e.g. Arial">
+        <input type="hidden" id="node-input-paraFontType">
+    </div>
+
+    <!-- addList -->
+    <div class="form-row docx-section sec-listType">
+        <label for="node-input-listType"><i class="fa fa-list"></i> List type</label>
+        <input type="text" id="node-input-listType" placeholder="bullet | number">
+        <input type="hidden" id="node-input-listTypeType">
+    </div>
+    <div class="form-row docx-section sec-listItems">
+        <label for="node-input-listItems"><i class="fa fa-list-ul"></i> Items</label>
+        <input type="text" id="node-input-listItems" placeholder='["Item 1","Item 2",{"text":"Nested","level":1}]'>
+        <input type="hidden" id="node-input-listItemsType">
+    </div>
+
+    <!-- addTable -->
+    <div class="form-row docx-section sec-tableRows">
+        <label for="node-input-tableRows"><i class="fa fa-table"></i> Rows</label>
+        <input type="text" id="node-input-tableRows" placeholder='[["Col1","Col2"],["v1","v2"]]'>
+        <input type="hidden" id="node-input-tableRowsType">
+    </div>
+    <div class="form-tips docx-section sec-tableRows" style="margin-bottom:6px">
+        A 2-D array of strings/numbers. If <em>Header row</em> is enabled, the first row is styled as a header. Each cell value is automatically converted to string.
+    </div>
+    <div class="form-row docx-section sec-tableHeaderRow">
+        <label for="node-input-tableHeaderRow"><i class="fa fa-bold"></i> Header row</label>
+        <input type="text" id="node-input-tableHeaderRow">
+        <input type="hidden" id="node-input-tableHeaderRowType">
+    </div>
+    <div class="form-row docx-section sec-columnWidths">
+        <label for="node-input-columnWidths"><i class="fa fa-arrows-h"></i> Col widths</label>
+        <input type="text" id="node-input-columnWidths" placeholder="[2500,4000,2500]">
+        <input type="hidden" id="node-input-columnWidthsType">
+    </div>
+    <div class="form-tips docx-section sec-columnWidths" style="margin-bottom:6px">
+        Array of per-column widths in <b>DXA</b> (1440 = 1 inch). Leave blank for equal percentage widths. A warning is logged if the total exceeds the page content width.
+    </div>
+    <div class="form-row docx-section sec-tableBorders">
+        <label for="node-input-tableBorders"><i class="fa fa-border-all"></i> Borders</label>
+        <input type="text" id="node-input-tableBorders">
+        <input type="hidden" id="node-input-tableBordersType">
+    </div>
+    <div class="form-tips docx-section sec-tableHeaderStyle-hdr" style="margin-bottom:6px">
+        <b>Header row style</b> — only applied when <em>Header row</em> is <code>true</code>.<br>
+        Fill / Color: 6-digit hex without <code>#</code> (e.g. fill <code>2E75B6</code>, color <code>FFFFFF</code>).<br>
+        Override entirely at runtime with <code>msg.params.headerStyle</code>.
+    </div>
+    <div class="form-row docx-section sec-tableHeaderStyle">
+        <label for="node-input-tableHeaderBold"><i class="fa fa-bold"></i> Header bold</label>
+        <input type="text" id="node-input-tableHeaderBold">
+        <input type="hidden" id="node-input-tableHeaderBoldType">
+    </div>
+    <div class="form-row docx-section sec-tableHeaderStyle">
+        <label for="node-input-tableHeaderFill"><i class="fa fa-paint-brush"></i> Header fill</label>
+        <input type="text" id="node-input-tableHeaderFill" placeholder="e.g. 2E75B6">
+        <input type="hidden" id="node-input-tableHeaderFillType">
+    </div>
+    <div class="form-row docx-section sec-tableHeaderStyle">
+        <label for="node-input-tableHeaderColor"><i class="fa fa-tint"></i> Header color</label>
+        <input type="text" id="node-input-tableHeaderColor" placeholder="e.g. FFFFFF">
+        <input type="hidden" id="node-input-tableHeaderColorType">
+    </div>
+
+    <!-- addImage -->
+    <div class="form-row docx-section sec-imageSource">
+        <label for="node-input-imageSource"><i class="fa fa-image"></i> Source</label>
+        <input type="text" id="node-input-imageSource" placeholder="/path/to/image.png  or  data:image/png;base64,...">
+        <input type="hidden" id="node-input-imageSourceType">
+    </div>
+    <div class="form-tips docx-section sec-imageSource" style="margin-bottom:6px">
+        Accepted: absolute file path, <code>data:image/…;base64,…</code> data URI, or a <code>Buffer</code> passed via <code>msg.params.imageSource</code>. Supported formats: PNG, JPG, GIF, BMP, SVG.
+    </div>
+    <div class="form-row docx-section sec-imageWidth">
+        <label for="node-input-imageWidth"><i class="fa fa-arrows-h"></i> Width (px)</label>
+        <input type="text" id="node-input-imageWidth" placeholder="200">
+        <input type="hidden" id="node-input-imageWidthType">
+    </div>
+    <div class="form-row docx-section sec-imageHeight">
+        <label for="node-input-imageHeight"><i class="fa fa-arrows-v"></i> Height (px)</label>
+        <input type="text" id="node-input-imageHeight" placeholder="150">
+        <input type="hidden" id="node-input-imageHeightType">
+    </div>
+    <div class="form-tips docx-section sec-imageWidth sec-imageHeight" style="margin-bottom:6px">
+        Width and height are rendered in pixels at 96 dpi. To preserve aspect ratio set one dimension and calculate the other proportionally before passing to the node.
+    </div>
+    <div class="form-row docx-section sec-imageAltText">
+        <label for="node-input-imageAltText"><i class="fa fa-info-circle"></i> Alt text</label>
+        <input type="text" id="node-input-imageAltText" placeholder="Image description">
+        <input type="hidden" id="node-input-imageAltTextType">
+    </div>
+
+    <!-- addHeader -->
+    <div class="form-row docx-section sec-headerText">
+        <label for="node-input-headerText"><i class="fa fa-header"></i> Text
+            <i class="fa fa-question-circle" title="Header text. Leave blank for an empty header (useful when only showing page numbers in the footer)."></i>
+        </label>
+        <input type="text" id="node-input-headerText" placeholder="Header text">
+        <input type="hidden" id="node-input-headerTextType">
+    </div>
+    <div class="form-row docx-section sec-headerType">
+        <label for="node-input-headerType"><i class="fa fa-file-o"></i> Header type
+            <i class="fa fa-question-circle" title="default = all pages · first = first page only · even = even pages (requires evenAndOddHeaders in Word settings)"></i>
+        </label>
+        <input type="text" id="node-input-headerType" placeholder="default | first | even">
+        <input type="hidden" id="node-input-headerTypeType">
+    </div>
+    <div class="form-row docx-section sec-headerAlignment">
+        <label for="node-input-headerAlignment"><i class="fa fa-align-left"></i> Alignment</label>
+        <input type="text" id="node-input-headerAlignment" placeholder="left | center | right">
+        <input type="hidden" id="node-input-headerAlignmentType">
+    </div>
+    <div class="form-tips docx-section sec-headerType" style="margin-bottom:6px">
+        <b>Header type</b>: <code>default</code> applies to all pages unless a <code>first</code> or <code>even</code> header overrides it.<br>
+        Run <b>addHeader</b> multiple times (once per type) to register all variants before calling <b>write</b>.
+    </div>
+
+    <!-- addFooter -->
+    <div class="form-row docx-section sec-footerText">
+        <label for="node-input-footerText"><i class="fa fa-minus-square-o"></i> Text
+            <i class="fa fa-question-circle" title="Footer text. If Show page number is enabled, the page number is appended after this text."></i>
+        </label>
+        <input type="text" id="node-input-footerText" placeholder="Footer text (optional)">
+        <input type="hidden" id="node-input-footerTextType">
+    </div>
+    <div class="form-row docx-section sec-footerType">
+        <label for="node-input-footerType"><i class="fa fa-file-o"></i> Footer type
+            <i class="fa fa-question-circle" title="default = all pages · first = first page only · even = even pages"></i>
+        </label>
+        <input type="text" id="node-input-footerType" placeholder="default | first | even">
+        <input type="hidden" id="node-input-footerTypeType">
+    </div>
+    <div class="form-row docx-section sec-footerAlignment">
+        <label for="node-input-footerAlignment"><i class="fa fa-align-center"></i> Alignment</label>
+        <input type="text" id="node-input-footerAlignment" placeholder="left | center | right">
+        <input type="hidden" id="node-input-footerAlignmentType">
+    </div>
+    <div class="form-row docx-section sec-footerShowPageNum">
+        <label for="node-input-footerShowPageNum"><i class="fa fa-list-ol"></i> Page numbers
+            <i class="fa fa-question-circle" title="When enabled, appends ' Page X of Y' after the footer text using automatic Word fields."></i>
+        </label>
+        <input type="text" id="node-input-footerShowPageNum">
+        <input type="hidden" id="node-input-footerShowPageNumType">
+    </div>
+    <div class="form-tips docx-section sec-footerShowPageNum" style="margin-bottom:6px">
+        When <b>Page numbers</b> is <code>true</code> the footer automatically includes <em>Page X of Y</em> (Word field codes) after any static text.
+    </div>
+
+    <!-- write -->
+    <div class="form-row docx-section sec-format">
+        <label for="node-input-format"><i class="fa fa-save"></i> Format</label>
+        <select id="node-input-format" style="width:70%">
+            <option value="buffer">buffer — Node.js Buffer</option>
+            <option value="base64">base64 — Base64 string</option>
+            <option value="file">file — write to disk</option>
+        </select>
+    </div>
+    <div class="form-row docx-section sec-filePath">
+        <label for="node-input-filePath"><i class="fa fa-folder"></i> File path</label>
+        <input type="text" id="node-input-filePath" placeholder="/var/reports/report.docx">
+        <input type="hidden" id="node-input-filePathType">
+    </div>
+</script>
+
+<!-- Help panel -->
+<script type="text/html" data-help-name="docx">
+    <p>Creates Word documents (.docx) using <a href="https://docx.js.org/" target="_blank">docx</a>.</p>
+    <p><b>Note:</b> The document is built as an in-memory tree. The actual .docx file is assembled only at <code>write</code> time. Editing existing .docx files is not supported.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object | null</span></dt>
+        <dd>Internal docx document object produced by a previous <code>create</code> or content node. <code>null</code> for <code>create</code>.</dd>
+        <dt class="optional">operation <span class="property-type">string</span></dt>
+        <dd>Overrides the operation configured in the panel.</dd>
+        <dt class="optional">params <span class="property-type">object</span></dt>
+        <dd>Operation parameters. Override individual panel fields at runtime. Pass <code>style</code>/<code>headerStyle</code> as an object to bypass individual fields entirely.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li>Success
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object | Buffer | string</span></dt>
+                <dd>Updated document object, or serialised output after <code>write</code>.</dd>
+            </dl>
+        </li>
+        <li>Error
+            <dl class="message-properties">
+                <dt>error <span class="property-type">object</span></dt>
+                <dd><code>{ message, operation, params, stack }</code></dd>
+            </dl>
+        </li>
+    </ol>
+
+    <h3>Operations</h3>
+    <ul>
+        <li><b>create</b> – new empty document</li>
+        <li><b>addHeading</b> – heading (level 1–6)</li>
+        <li><b>addParagraph</b> – plain or mixed-style paragraph (use <code>runs</code> for inline formatting)</li>
+        <li><b>addList</b> – bullet or numbered list</li>
+        <li><b>addTable</b> – table with optional header styling</li>
+        <li><b>addImage</b> – inline image (path, Buffer, or base64 data URI); width/height in pixels</li>
+        <li><b>addHeader</b> – register a page header (type: <code>default</code> / <code>first</code> / <code>even</code>); call before <code>write</code></li>
+        <li><b>addFooter</b> – register a page footer; supports static text and automatic page numbers</li>
+        <li><b>pageBreak</b> – insert a page break</li>
+        <li><b>write</b> – serialise to file / Buffer / base64</li>
+    </ul>
+
+    <h3>Notes</h3>
+    <ul>
+        <li>Headers and footers are registered in the document builder at <code>write</code> time. Call <code>addHeader</code>/<code>addFooter</code> once per type before calling <code>write</code>.</li>
+        <li>To add hyperlinks inside a paragraph use the <em>Runs</em> field: <code>[{"text":"Click here","hyperlink":"https://…"}]</code>.</li>
+    </ul>
+</script>

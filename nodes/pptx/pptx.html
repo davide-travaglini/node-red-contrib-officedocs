@@ -1,0 +1,553 @@
+<!-- PptxGenJS Node - Editor Panel -->
+<script type="text/javascript">
+    (function () {
+
+        const OPERATIONS = [
+            { v: 'create',       l: 'create — new presentation' },
+            { v: 'addSlide',     l: 'addSlide — add slide (becomes current)' },
+            { v: 'addText',      l: 'addText — add text to slide' },
+            { v: 'addShape',     l: 'addShape — add shape to slide' },
+            { v: 'addImage',     l: 'addImage — add image to slide' },
+            { v: 'addChart',     l: 'addChart — add chart to slide' },
+            { v: 'addTable',     l: 'addTable — add table to slide' },
+            { v: 'addNotes',      l: 'addNotes — add speaker notes to slide' },
+            { v: 'defineMaster',  l: 'defineMaster — define slide master layout' },
+            { v: 'getSlideCount', l: 'getSlideCount — number of slides in presentation' },
+            { v: 'setLayout',     l: 'setLayout — change presentation layout' },
+            { v: 'write',        l: 'write — serialize to file / buffer / base64' }
+        ];
+
+        const OP_SECTIONS = {
+            create:    ['sec-layout', 'sec-author', 'sec-company', 'sec-theme'],
+            addSlide:  ['sec-masterName', 'sec-bgColor'],
+            addText:   ['sec-text', 'sec-slideIndex', 'sec-pos-hdr', 'sec-position', 'sec-textStyle-hdr', 'sec-textStyle'],
+            addShape:  ['sec-shapeType', 'sec-slideIndex', 'sec-pos-hdr', 'sec-position', 'sec-shapeStyle-hdr', 'sec-shapeStyle'],
+            addImage:  ['sec-imageSource', 'sec-imageType', 'sec-slideIndex', 'sec-pos-hdr', 'sec-position', 'sec-sizing', 'sec-hyperlink'],
+            addChart:  ['sec-chartType', 'sec-slideIndex', 'sec-pos-hdr', 'sec-position', 'sec-chartData', 'sec-chartOptions'],
+            addTable:     ['sec-tableRows', 'sec-slideIndex', 'sec-pos-hdr', 'sec-position', 'sec-tableOptions'],
+            addNotes:      ['sec-notes', 'sec-slideIndex'],
+            defineMaster:  ['sec-masterTitle', 'sec-masterBkg', 'sec-masterObjects'],
+            getSlideCount: ['sec-getSlideCount-tip'],
+            setLayout:     ['sec-layout'],
+            write:        ['sec-format', 'sec-filePath']
+        };
+
+        function updateSections(op) {
+            $('.pptx-section').hide();
+            (OP_SECTIONS[op] || []).forEach(cls => $('.' + cls).show());
+            if (op === 'write') {
+                const fmt = $('#node-input-format').val();
+                if (fmt === 'file') $('.sec-filePath').show();
+                else $('.sec-filePath').hide();
+            }
+        }
+
+        RED.nodes.registerType('pptx', {
+            category: 'Office Docs',
+            color: '#D04423',
+            icon: 'font-awesome/fa-file-powerpoint-o',
+            inputs: 1,
+            outputs: 2,
+            outputLabels: ['success', 'error'],
+            paletteLabel: 'pptx',
+
+            defaults: {
+                name:              { value: '' },
+                operation:         { value: 'create' },
+                operationType:     { value: 'str' },
+                // create / setLayout
+                layout:            { value: 'LAYOUT_16x9' },
+                layoutType:        { value: 'str' },
+                author:            { value: '' },
+                authorType:        { value: 'str' },
+                company:           { value: '' },
+                companyType:       { value: 'str' },
+                theme:             { value: '' },
+                themeType:         { value: 'json' },
+                // addSlide
+                masterName:        { value: '' },
+                masterNameType:    { value: 'str' },
+                bgColor:           { value: '' },
+                bgColorType:       { value: 'str' },
+                // shared: slideIndex
+                slideIndex:        { value: '' },
+                slideIndexType:    { value: 'num' },
+                // shared: position
+                posX:              { value: '' },
+                posXType:          { value: 'num' },
+                posY:              { value: '' },
+                posYType:          { value: 'num' },
+                posW:              { value: '' },
+                posWType:          { value: 'num' },
+                posH:              { value: '' },
+                posHType:          { value: 'num' },
+                // addText
+                text:              { value: '' },
+                textType:          { value: 'str' },
+                textFontSize:      { value: '' },
+                textFontSizeType:  { value: 'num' },
+                textBold:          { value: '' },
+                textBoldType:      { value: 'bool' },
+                textColor:         { value: '' },
+                textColorType:     { value: 'str' },
+                textAlign:         { value: '' },
+                textAlignType:     { value: 'str' },
+                textFontFace:      { value: '' },
+                textFontFaceType:  { value: 'str' },
+                textValign:        { value: '' },
+                textValignType:    { value: 'str' },
+                textWrap:          { value: '' },
+                textWrapType:      { value: 'bool' },
+                // addShape
+                shapeType:         { value: 'rect' },
+                shapeTypeType:     { value: 'str' },
+                shapeFillColor:    { value: '' },
+                shapeFillColorType: { value: 'str' },
+                shapeLineColor:    { value: '' },
+                shapeLineColorType: { value: 'str' },
+                shapeLineWidth:    { value: '' },
+                shapeLineWidthType: { value: 'num' },
+                // addImage
+                imageSource:       { value: '' },
+                imageSourceType:   { value: 'str' },
+                imageType:         { value: 'png' },
+                imageTypeType:     { value: 'str' },
+                sizing:            { value: '' },
+                sizingType:        { value: 'json' },
+                hyperlink:         { value: '' },
+                hyperlinkType:     { value: 'json' },
+                // addChart
+                chartType:         { value: 'bar' },
+                chartTypeType:     { value: 'str' },
+                chartData:         { value: '' },
+                chartDataType:     { value: 'json' },
+                chartOptions:      { value: '' },
+                chartOptionsType:  { value: 'json' },
+                // addTable
+                tableRows:         { value: '' },
+                tableRowsType:     { value: 'json' },
+                tableOptions:      { value: '' },
+                tableOptionsType:  { value: 'json' },
+                // addNotes
+                notes:             { value: '' },
+                notesType:         { value: 'str' },
+                // defineMaster
+                masterTitle:       { value: 'MASTER_SLIDE' },
+                masterTitleType:   { value: 'str' },
+                masterBkg:         { value: '' },
+                masterBkgType:     { value: 'str' },
+                masterObjects:     { value: '' },
+                masterObjectsType: { value: 'json' },
+                // write
+                format:            { value: 'buffer' },
+                formatType:        { value: 'str' },
+                filePath:          { value: '' },
+                filePathType:      { value: 'str' }
+            },
+
+            label: function () {
+                return this.name || 'pptx: ' + (this.operation || 'create');
+            },
+
+            oneditprepare: function () {
+                const $op = $('#node-input-operation');
+                $op.empty();
+                OPERATIONS.forEach(o => $op.append(`<option value="${o.v}">${o.l}</option>`));
+                $op.val(this.operation || 'create');
+
+                const tiText = ['str', 'msg', 'env', 'jsonata'];
+                const tiJson = ['json', 'msg', 'env', 'jsonata'];
+                const tiBool = ['bool', 'msg', 'env'];
+                const tiNum  = ['num', 'msg', 'env', 'jsonata'];
+
+                function ti(id, types) {
+                    $('#node-input-' + id).typedInput({ typeField: '#node-input-' + id + 'Type', types });
+                }
+
+                ti('layout',         tiText);
+                ti('author',         tiText);
+                ti('company',        tiText);
+                ti('theme',          tiJson);
+                ti('masterName',     tiText);
+                ti('bgColor',        tiText);
+                ti('slideIndex',     tiNum);
+                ti('posX',           tiNum);
+                ti('posY',           tiNum);
+                ti('posW',           tiNum);
+                ti('posH',           tiNum);
+                ti('text',           tiText);
+                ti('textFontSize',   tiNum);
+                ti('textBold',       tiBool);
+                ti('textColor',      tiText);
+                ti('textAlign',      tiText);
+                ti('textFontFace',   tiText);
+                ti('textValign',     tiText);
+                ti('textWrap',       tiBool);
+                ti('shapeType',      tiText);
+                ti('shapeFillColor', tiText);
+                ti('shapeLineColor', tiText);
+                ti('shapeLineWidth', tiNum);
+                ti('imageSource',    tiText);
+                ti('imageType',      tiText);
+                ti('sizing',         tiJson);
+                ti('hyperlink',      tiJson);
+                ti('chartType',      tiText);
+                ti('chartData',      tiJson);
+                ti('chartOptions',   tiJson);
+                ti('tableRows',      tiJson);
+                ti('tableOptions',   tiJson);
+                ti('notes',          tiText);
+                ti('masterTitle',    tiText);
+                ti('masterBkg',      tiText);
+                ti('masterObjects',  tiJson);
+                ti('filePath',       tiText);
+
+                $('#node-input-format').on('change', function () {
+                    if ($('#node-input-operation').val() === 'write') {
+                        if ($(this).val() === 'file') $('.sec-filePath').show();
+                        else $('.sec-filePath').hide();
+                    }
+                });
+
+                $op.on('change', function () { updateSections($(this).val()); });
+                updateSections(this.operation || 'create');
+            }
+        });
+    }());
+</script>
+
+<!-- Node template -->
+<script type="text/html" data-template-name="pptx">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-operation"><i class="fa fa-cog"></i> Operation</label>
+        <select id="node-input-operation" style="width:70%"></select>
+    </div>
+    <div class="form-row" style="color:#999;font-size:11px;margin-top:-8px;padding-left:115px">
+        Override at runtime via <code>msg.operation</code>
+    </div>
+
+    <!-- create / setLayout -->
+    <div class="form-row pptx-section sec-layout">
+        <label for="node-input-layout"><i class="fa fa-desktop"></i> Layout</label>
+        <input type="text" id="node-input-layout" placeholder="LAYOUT_16x9 | LAYOUT_4x3 | LAYOUT_WIDE">
+        <input type="hidden" id="node-input-layoutType">
+    </div>
+    <div class="form-tips pptx-section sec-layout" style="margin-bottom:6px">
+        Built-in values: <code>LAYOUT_16x9</code> (10″×5.625″), <code>LAYOUT_4x3</code> (10″×7.5″), <code>LAYOUT_WIDE</code> (13.33″×7.5″).<br>
+        For a custom size pass <code>{"width":12,"height":6.75}</code> (inches) via <code>msg.params.layout</code>.
+    </div>
+
+    <!-- create -->
+    <div class="form-row pptx-section sec-author">
+        <label for="node-input-author"><i class="fa fa-user"></i> Author</label>
+        <input type="text" id="node-input-author" placeholder="Author">
+        <input type="hidden" id="node-input-authorType">
+    </div>
+    <div class="form-row pptx-section sec-company">
+        <label for="node-input-company"><i class="fa fa-building"></i> Company</label>
+        <input type="text" id="node-input-company" placeholder="Company name">
+        <input type="hidden" id="node-input-companyType">
+    </div>
+    <div class="form-row pptx-section sec-theme">
+        <label for="node-input-theme"><i class="fa fa-paint-brush"></i> Theme</label>
+        <input type="text" id="node-input-theme" placeholder='{"headFontFace":"Calibri","bodyFontFace":"Calibri"}'>
+        <input type="hidden" id="node-input-themeType">
+    </div>
+
+    <!-- addSlide -->
+    <div class="form-row pptx-section sec-masterName">
+        <label for="node-input-masterName"><i class="fa fa-clone"></i> Master name</label>
+        <input type="text" id="node-input-masterName" placeholder="Registered master slide name">
+        <input type="hidden" id="node-input-masterNameType">
+    </div>
+    <div class="form-row pptx-section sec-bgColor">
+        <label for="node-input-bgColor"><i class="fa fa-tint"></i> Background</label>
+        <input type="text" id="node-input-bgColor" placeholder="6-digit hex, e.g. FFFFFF">
+        <input type="hidden" id="node-input-bgColorType">
+    </div>
+    <div class="form-tips pptx-section sec-bgColor" style="margin-bottom:6px">
+        Sets a solid background color (6-digit hex, no <code>#</code>). For an image background pass <code>{"path":"/img/bg.png"}</code> via <code>msg.params.bgColor</code>.
+    </div>
+
+    <!-- shared: slideIndex -->
+    <div class="form-row pptx-section sec-slideIndex">
+        <label for="node-input-slideIndex"><i class="fa fa-sort-numeric-asc"></i> Slide index</label>
+        <input type="text" id="node-input-slideIndex" placeholder="0-based (leave empty = current slide)">
+        <input type="hidden" id="node-input-slideIndexType">
+    </div>
+
+    <!-- shared: position header + individual fields -->
+    <div class="form-tips pptx-section sec-pos-hdr" style="margin-bottom:6px">
+        <b>Position</b> — all values in <b>inches</b>. X/Y = top-left corner offset from slide edge. W/H = element size.<br>
+        Leave blank to use the operation default. Override entirely via <code>msg.params.position</code> <code>{"x":…,"y":…,"w":…,"h":…}</code>.
+    </div>
+    <div class="form-row pptx-section sec-position">
+        <label for="node-input-posX"><i class="fa fa-arrows-h"></i> X</label>
+        <input type="text" id="node-input-posX" placeholder="e.g. 0.5">
+        <input type="hidden" id="node-input-posXType">
+    </div>
+    <div class="form-row pptx-section sec-position">
+        <label for="node-input-posY"><i class="fa fa-arrows-v"></i> Y</label>
+        <input type="text" id="node-input-posY" placeholder="e.g. 0.5">
+        <input type="hidden" id="node-input-posYType">
+    </div>
+    <div class="form-row pptx-section sec-position">
+        <label for="node-input-posW"><i class="fa fa-arrows-h"></i> Width</label>
+        <input type="text" id="node-input-posW" placeholder="e.g. 9">
+        <input type="hidden" id="node-input-posWType">
+    </div>
+    <div class="form-row pptx-section sec-position">
+        <label for="node-input-posH"><i class="fa fa-arrows-v"></i> Height</label>
+        <input type="text" id="node-input-posH" placeholder="e.g. 1.5">
+        <input type="hidden" id="node-input-posHType">
+    </div>
+
+    <!-- addText -->
+    <div class="form-row pptx-section sec-text">
+        <label for="node-input-text"><i class="fa fa-font"></i> Text</label>
+        <input type="text" id="node-input-text" placeholder="Text content or array of TextProps">
+        <input type="hidden" id="node-input-textType">
+    </div>
+    <div class="form-tips pptx-section sec-textStyle-hdr" style="margin-bottom:6px">
+        <b>Text style</b> — all fields optional; leave blank to use PptxGenJS defaults.<br>
+        Color: 6-digit hex without <code>#</code> (e.g. <code>003366</code>). Font size in points (e.g. 24).<br>
+        Override entirely via <code>msg.params.textStyle</code>.
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textFontSize"><i class="fa fa-text-height"></i> Font size</label>
+        <input type="text" id="node-input-textFontSize" placeholder="e.g. 24">
+        <input type="hidden" id="node-input-textFontSizeType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textBold"><i class="fa fa-bold"></i> Bold</label>
+        <input type="text" id="node-input-textBold">
+        <input type="hidden" id="node-input-textBoldType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textColor"><i class="fa fa-tint"></i> Color (hex)</label>
+        <input type="text" id="node-input-textColor" placeholder="e.g. 003366">
+        <input type="hidden" id="node-input-textColorType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textAlign"><i class="fa fa-align-left"></i> Align</label>
+        <input type="text" id="node-input-textAlign" placeholder="left | center | right | justify">
+        <input type="hidden" id="node-input-textAlignType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textFontFace"><i class="fa fa-font"></i> Font face</label>
+        <input type="text" id="node-input-textFontFace" placeholder="e.g. Arial, Calibri, Times New Roman">
+        <input type="hidden" id="node-input-textFontFaceType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textValign"><i class="fa fa-arrows-v"></i> V-Align</label>
+        <input type="text" id="node-input-textValign" placeholder="top | middle | bottom">
+        <input type="hidden" id="node-input-textValignType">
+    </div>
+    <div class="form-row pptx-section sec-textStyle">
+        <label for="node-input-textWrap"><i class="fa fa-exchange"></i> Wrap</label>
+        <input type="text" id="node-input-textWrap">
+        <input type="hidden" id="node-input-textWrapType">
+    </div>
+
+    <!-- addShape -->
+    <div class="form-row pptx-section sec-shapeType">
+        <label for="node-input-shapeType"><i class="fa fa-square-o"></i> Shape type</label>
+        <input type="text" id="node-input-shapeType" placeholder="rect | ellipse | triangle | …">
+        <input type="hidden" id="node-input-shapeTypeType">
+    </div>
+    <div class="form-tips pptx-section sec-shapeStyle-hdr" style="margin-bottom:6px">
+        <b>Shape style</b> — all fields optional. Colors: 6-digit hex without <code>#</code>. Line width in points.<br>
+        Override entirely via <code>msg.params.shapeStyle</code>.
+    </div>
+    <div class="form-row pptx-section sec-shapeStyle">
+        <label for="node-input-shapeFillColor"><i class="fa fa-paint-brush"></i> Fill color</label>
+        <input type="text" id="node-input-shapeFillColor" placeholder="e.g. 4472C4">
+        <input type="hidden" id="node-input-shapeFillColorType">
+    </div>
+    <div class="form-row pptx-section sec-shapeStyle">
+        <label for="node-input-shapeLineColor"><i class="fa fa-square-o"></i> Line color</label>
+        <input type="text" id="node-input-shapeLineColor" placeholder="e.g. 002060">
+        <input type="hidden" id="node-input-shapeLineColorType">
+    </div>
+    <div class="form-row pptx-section sec-shapeStyle">
+        <label for="node-input-shapeLineWidth"><i class="fa fa-minus"></i> Line width</label>
+        <input type="text" id="node-input-shapeLineWidth" placeholder="e.g. 1">
+        <input type="hidden" id="node-input-shapeLineWidthType">
+    </div>
+
+    <!-- addImage -->
+    <div class="form-row pptx-section sec-imageSource">
+        <label for="node-input-imageSource"><i class="fa fa-image"></i> Source</label>
+        <input type="text" id="node-input-imageSource" placeholder="/path/file.png  |  https://…  |  data:image/png;base64,…">
+        <input type="hidden" id="node-input-imageSourceType">
+    </div>
+    <div class="form-tips pptx-section sec-imageSource" style="margin-bottom:6px">
+        Accepted: absolute file path, HTTP/HTTPS URL, <code>data:image/…;base64,…</code> URI, or a <code>Buffer</code> via <code>msg.params.imageSource</code>. Set <em>Type</em> when source is a Buffer.
+    </div>
+    <div class="form-row pptx-section sec-imageType">
+        <label for="node-input-imageType"><i class="fa fa-file-image-o"></i> Type</label>
+        <input type="text" id="node-input-imageType" placeholder="png | jpg | gif | svg (required for Buffer)">
+        <input type="hidden" id="node-input-imageTypeType">
+    </div>
+    <div class="form-row pptx-section sec-sizing">
+        <label for="node-input-sizing"><i class="fa fa-crop"></i> Sizing</label>
+        <input type="text" id="node-input-sizing" placeholder='{"type":"contain","x":0,"y":0}'>
+        <input type="hidden" id="node-input-sizingType">
+    </div>
+    <div class="form-row pptx-section sec-hyperlink">
+        <label for="node-input-hyperlink"><i class="fa fa-link"></i> Hyperlink</label>
+        <input type="text" id="node-input-hyperlink" placeholder='{"url":"https://...","tooltip":"..."}'>
+        <input type="hidden" id="node-input-hyperlinkType">
+    </div>
+
+    <!-- addChart -->
+    <div class="form-row pptx-section sec-chartType">
+        <label for="node-input-chartType"><i class="fa fa-bar-chart"></i> Chart type</label>
+        <input type="text" id="node-input-chartType" placeholder="bar | line | pie | area | scatter | bubble | donut">
+        <input type="hidden" id="node-input-chartTypeType">
+    </div>
+    <div class="form-row pptx-section sec-chartData">
+        <label for="node-input-chartData"><i class="fa fa-table"></i> Data</label>
+        <input type="text" id="node-input-chartData" placeholder='[{"name":"Sales","labels":["Q1","Q2"],"values":[100,150]}]'>
+        <input type="hidden" id="node-input-chartDataType">
+    </div>
+    <div class="form-tips pptx-section sec-chartData" style="margin-bottom:6px">
+        Array of series objects: <code>[{"name":"Series label","labels":["Cat1","Cat2"],"values":[10,20]}]</code>. Multiple objects = multiple series on the same chart.
+    </div>
+    <div class="form-row pptx-section sec-chartOptions">
+        <label for="node-input-chartOptions"><i class="fa fa-cog"></i> Options</label>
+        <input type="text" id="node-input-chartOptions" placeholder='{"showLegend":true,"showTitle":true,"title":"My Chart"}'>
+        <input type="hidden" id="node-input-chartOptionsType">
+    </div>
+
+    <!-- addTable -->
+    <div class="form-row pptx-section sec-tableRows">
+        <label for="node-input-tableRows"><i class="fa fa-table"></i> Rows</label>
+        <input type="text" id="node-input-tableRows" placeholder='[[{"text":"H1","options":{"bold":true}}],[{"text":"v1"}]]'>
+        <input type="hidden" id="node-input-tableRowsType">
+    </div>
+    <div class="form-row pptx-section sec-tableOptions">
+        <label for="node-input-tableOptions"><i class="fa fa-cog"></i> Options</label>
+        <input type="text" id="node-input-tableOptions" placeholder='{"colW":[3,3],"border":{"type":"solid","pt":1},"fontSize":14}'>
+        <input type="hidden" id="node-input-tableOptionsType">
+    </div>
+
+    <!-- addNotes -->
+    <div class="form-row pptx-section sec-notes">
+        <label for="node-input-notes"><i class="fa fa-comment-o"></i> Notes
+            <i class="fa fa-question-circle" title="Plain-text speaker notes for the slide. Visible in PowerPoint Presenter View but not on the slide itself."></i>
+        </label>
+        <input type="text" id="node-input-notes" placeholder="Speaker notes text">
+        <input type="hidden" id="node-input-notesType">
+    </div>
+    <div class="form-tips pptx-section sec-notes" style="margin-bottom:6px">
+        Speaker notes appear in <em>Presenter View</em> (PowerPoint) but are not rendered on the slide. The <em>Slide index</em> field below targets a specific slide; leave blank to use the current slide.
+    </div>
+
+    <!-- defineMaster -->
+    <div class="form-row pptx-section sec-masterTitle">
+        <label for="node-input-masterTitle"><i class="fa fa-clone"></i> Master title
+            <i class="fa fa-question-circle" title="Unique name for this master layout. Refer to it later in addSlide → Master name."></i>
+        </label>
+        <input type="text" id="node-input-masterTitle" placeholder="e.g. MASTER_SLIDE">
+        <input type="hidden" id="node-input-masterTitleType">
+    </div>
+    <div class="form-row pptx-section sec-masterBkg">
+        <label for="node-input-masterBkg"><i class="fa fa-tint"></i> Background
+            <i class="fa fa-question-circle" title="Solid fill: 6-digit hex (e.g. 1F3864). Image background: pass {&quot;path&quot;:&quot;/img/bg.png&quot;} via msg.params.masterBkg."></i>
+        </label>
+        <input type="text" id="node-input-masterBkg" placeholder="6-digit hex, e.g. 1F3864">
+        <input type="hidden" id="node-input-masterBkgType">
+    </div>
+    <div class="form-row pptx-section sec-masterObjects">
+        <label for="node-input-masterObjects"><i class="fa fa-object-group"></i> Objects
+            <i class="fa fa-question-circle" title="Array of placeholder/text/image objects to place on every slide that uses this master. See PptxGenJS docs for the object schema."></i>
+        </label>
+        <input type="text" id="node-input-masterObjects" placeholder='[{"type":"text","text":"Confidential","options":{...}}]'>
+        <input type="hidden" id="node-input-masterObjectsType">
+    </div>
+    <div class="form-tips pptx-section sec-masterTitle" style="margin-bottom:6px">
+        <b>defineMaster must run before addSlide</b> — PptxGenJS resolves the master at slide-creation time. A warning is logged if slides already exist when this operation runs.
+    </div>
+
+    <!-- getSlideCount -->
+    <div class="form-tips pptx-section sec-getSlideCount-tip" style="margin-bottom:6px">
+        Returns slide count without modifying the presentation.<br>
+        <b>msg.payload</b> → <code>{"slideCount": 5, "currentSlideIndex": 4}</code><br>
+        The original presentation is preserved in <b>msg._doc</b> so the chain can continue.
+    </div>
+
+    <!-- write -->
+    <div class="form-row pptx-section sec-format">
+        <label for="node-input-format"><i class="fa fa-save"></i> Format</label>
+        <select id="node-input-format" style="width:70%">
+            <option value="buffer">buffer — Node.js Buffer</option>
+            <option value="base64">base64 — Base64 string</option>
+            <option value="file">file — write to disk</option>
+        </select>
+    </div>
+    <div class="form-row pptx-section sec-filePath">
+        <label for="node-input-filePath"><i class="fa fa-folder"></i> File path</label>
+        <input type="text" id="node-input-filePath" placeholder="/var/slides/presentation.pptx">
+        <input type="hidden" id="node-input-filePathType">
+    </div>
+</script>
+
+<!-- Help panel -->
+<script type="text/html" data-help-name="pptx">
+    <p>Creates PowerPoint presentations (.pptx) using <a href="https://gitbrent.github.io/PptxGenJS/" target="_blank">PptxGenJS</a>.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object | null</span></dt>
+        <dd>Internal presentation wrapper produced by <code>create</code>. <code>null</code> for <code>create</code>.</dd>
+        <dt class="optional">operation <span class="property-type">string</span></dt>
+        <dd>Overrides the operation configured in the panel.</dd>
+        <dt class="optional">params <span class="property-type">object</span></dt>
+        <dd>Operation parameters — override individual panel fields at runtime. Pass <code>position</code>, <code>textStyle</code>, or <code>shapeStyle</code> as objects to bypass individual fields entirely.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li>Success
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object | Buffer | string</span></dt>
+                <dd>Updated presentation wrapper, or serialised output after <code>write</code>.</dd>
+            </dl>
+        </li>
+        <li>Error
+            <dl class="message-properties">
+                <dt>error <span class="property-type">object</span></dt>
+                <dd><code>{ message, operation, params, stack }</code></dd>
+            </dl>
+        </li>
+    </ol>
+
+    <h3>Operations</h3>
+    <ul>
+        <li><b>create</b> – new presentation (sets layout, author, company)</li>
+        <li><b>addSlide</b> – add a new slide; becomes the <em>current slide</em> for subsequent content operations</li>
+        <li><b>addText</b> – add a text box to a slide (default: current slide)</li>
+        <li><b>addShape</b> – add a geometric shape</li>
+        <li><b>addImage</b> – add an image (URL, path, Buffer, or base64 data URI)</li>
+        <li><b>addChart</b> – add a chart (bar, line, pie, area, scatter, bubble, donut)</li>
+        <li><b>addTable</b> – add a table</li>
+        <li><b>addNotes</b> – add plain-text speaker notes to a slide (visible in Presenter View only)</li>
+        <li><b>defineMaster</b> – define a named slide master (background, objects); must run before <code>addSlide</code></li>
+        <li><b>getSlideCount</b> – returns <code>{slideCount, currentSlideIndex}</code>; presentation preserved in <code>msg._doc</code></li>
+        <li><b>setLayout</b> – change layout after creation</li>
+        <li><b>write</b> – serialise to file / Buffer / base64</li>
+    </ul>
+
+    <h3>Notes</h3>
+    <ul>
+        <li>Content operations target the <em>current slide</em> (last added) unless <code>slideIndex</code> is specified.</li>
+        <li>Positions (X, Y, W, H) are in inches. Use <code>slideIndex</code> (0-based) to target a specific slide.</li>
+        <li>Call <code>defineMaster</code> before any <code>addSlide</code> that references the master via <em>Master name</em>.</li>
+    </ul>
+</script>
